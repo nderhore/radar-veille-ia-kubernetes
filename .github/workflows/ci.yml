@@ -1,0 +1,105 @@
+# Intégration continue : tests, images, analyse de vulnérabilités, signature, mise à jour GitOps.
+# Le pipeline ne déploie jamais directement dans le cluster (décision D9) : il modifie le dépôt,
+# Argo CD réconcilie. L'historique Git devient le journal des déploiements.
+name: ci
+
+# Tests et validations à chaque push et pull request. La construction des images et la mise à jour
+# GitOps se déclenchent à la main (Actions, puis Run workflow) : elles publient sur ghcr.io et
+# commitent dans le dépôt.
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+permissions:
+  contents: write          # mise à jour du tag d'image dans l'overlay prod
+  packages: write          # publication sur ghcr.io
+  id-token: write          # signature sans clé (cosign + OIDC)
+
+env:
+  REGISTRY: ghcr.io/${{ github.repository_owner }}
+
+defaults:
+  run:
+    working-directory: plateforme
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: {distribution: temurin, java-version: "21", cache: maven}
+      - run: mvn -B verify
+        working-directory: plateforme/services
+      - uses: actions/setup-node@v4
+        with: {node-version: "24", cache: npm, cache-dependency-path: plateforme/frontend/radar-web/package-lock.json}
+      - run: npm ci && npx ng build
+        working-directory: plateforme/frontend/radar-web
+
+  validate-manifests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Kustomize + kubeconform (schémas Kubernetes et CRD)
+        run: |
+          curl -sL https://github.com/yannh/kubeconform/releases/download/v0.8.0/kubeconform-linux-amd64.tar.gz | tar xz
+          for o in dev dev-canary prod; do
+            kubectl kustomize deploy/app/overlays/$o | ./kubeconform -strict -summary \
+              -schema-location default \
+              -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json'
+          done
+      - name: Règles Prometheus (promtool)
+        run: |
+          yq '{"groups": .spec.groups}' deploy/app/monitoring/prometheus-rules.yaml > rules.yaml
+          docker run --rm --entrypoint promtool -v "$PWD/rules.yaml:/rules.yaml:ro" prom/prometheus:v3.15.0 check rules /rules.yaml
+
+  images:
+    needs: [test, validate-manifests]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        component:
+          - {name: radar-api, path: plateforme/services/radar-api}
+          - {name: signal-collector, path: plateforme/services/signal-collector}
+          - {name: radar-web, path: plateforme/frontend/radar-web}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with: {registry: ghcr.io, username: "${{ github.actor }}", password: "${{ secrets.GITHUB_TOKEN }}"}
+      - id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.component.path }}
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ env.REGISTRY }}/${{ matrix.component.name }}:${{ github.sha }}
+          provenance: true
+          sbom: true
+      - name: Analyse de vulnérabilités (bloquante sur CRITICAL)
+        uses: aquasecurity/trivy-action@0.33.1
+        with:
+          image-ref: ${{ env.REGISTRY }}/${{ matrix.component.name }}:${{ github.sha }}
+          severity: CRITICAL
+          exit-code: "1"
+          ignore-unfixed: true
+      - uses: sigstore/cosign-installer@v3
+      - name: Signature de l'image (vérifiable à l'admission par une politique Kyverno)
+        run: cosign sign --yes ${{ env.REGISTRY }}/${{ matrix.component.name }}@${{ steps.build.outputs.digest }}
+
+  gitops-bump:
+    needs: images
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Mise à jour des tags d'image de l'overlay prod (Argo CD se charge du déploiement)
+        working-directory: plateforme/deploy/app/overlays/prod
+        run: |
+          for c in radar-api signal-collector radar-web; do
+            kustomize edit set image radar/$c=${REGISTRY}/$c:${GITHUB_SHA}
+          done
+          git config user.name "radar-ci"; git config user.email "radar-ci@users.noreply.github.com"
+          git commit -am "deploy: radar ${GITHUB_SHA::7}" && git push
