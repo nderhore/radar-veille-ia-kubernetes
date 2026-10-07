@@ -1,0 +1,24 @@
+# Routage des alertes (décision D6, mise en situation S4) : chaque alerte va au bon destinataire.
+# Les récepteurs sont volontairement vides pour la démonstration : l'interface d'Alertmanager
+# (http://localhost:9093) montre à quel récepteur chaque alerte est routée.
+route:
+  receiver: ops                           # par défaut : canal d'exploitation
+  group_by: [alertname]
+  group_wait: 10s
+  group_interval: 1m
+  repeat_interval: 4h
+  routes:
+    - receiver: veille                    # alerte MÉTIER : l'équipe veille, jamais l'astreinte
+      matchers: ['team="veille"']
+    - receiver: astreinte                 # incident : astreinte
+      matchers: ['severity="critical"']
+
+inhibit_rules:
+  - source_matchers: ['severity="critical"']
+    target_matchers: ['severity="warning"']
+    equal: [alertname]
+
+receivers:
+  - name: ops                             # production : slack_configs (#radar-ops)
+  - name: veille                          # production : slack_configs (#veille-radar)
+  - name: astreinte                       # production : PagerDuty / Opsgenie

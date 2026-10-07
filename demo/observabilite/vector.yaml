@@ -1,0 +1,70 @@
+# Vector : même chaîne que la plateforme Kubernetes (décision D7) :
+# journaux des conteneurs, analyse (JSON ECS de Spring Boot), masquage RGPD, filtrage du bruit
+# résultat : Loki (journaux) + Prometheus (métrique radar_log_events_total).
+data_dir: /tmp
+
+sources:
+  conteneurs:
+    type: docker_logs
+    include_labels: ["com.docker.compose.project=radar-cours"]
+    exclude_containers: ["radar-cours-vector"]   # Vector ne collecte pas ses propres journaux
+
+transforms:
+  analyse:
+    type: remap
+    inputs: [conteneurs]
+    source: |
+      .app = .label."com.docker.compose.service"
+      if .app == null { .app = "inconnu" }
+      .level = "info"
+      .msg = string(.message) ?? ""
+
+      parsed, err = parse_json(.message)
+      if err == null && is_object(parsed) && exists(parsed.log.level) {
+        # Journal applicatif Spring Boot (Elastic Common Schema)
+        .level = downcase(string(parsed.log.level) ?? "info")
+        .logger = parsed.log.logger
+        .msg = string(parsed.message) ?? .msg
+      } else if match(.msg, r'(?i)\b(error|fatal)\b') {
+        .level = "error"
+      }
+
+      # RGPD : masquage des adresses électroniques avant stockage
+      .msg = replace(.msg, r'[\w.+-]+@[\w-]+\.[\w.-]+', "<email>")
+      del(.message)
+      del(.label)
+
+  sans_bruit:
+    type: filter
+    inputs: [analyse]
+    condition: |
+      msg = to_string(.msg) ?? ""
+      !contains(msg, "/actuator/health") && !contains(msg, "/healthz")
+
+  metriques_journaux:
+    type: log_to_metric
+    inputs: [sans_bruit]
+    metrics:
+      - type: counter
+        field: level
+        name: log_events_total
+        namespace: radar
+        tags:
+          app: "{{ app }}"
+          level: "{{ level }}"
+
+sinks:
+  loki:
+    type: loki
+    inputs: [sans_bruit]
+    endpoint: http://loki:3100
+    encoding:
+      codec: json
+    labels:                               # 2 labels à faible cardinalité
+      app: "{{ app }}"
+      level: "{{ level }}"
+
+  prometheus:
+    type: prometheus_exporter
+    inputs: [metriques_journaux]
+    address: 0.0.0.0:9598

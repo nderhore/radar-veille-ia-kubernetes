@@ -1,0 +1,69 @@
+# Règles d'alerte de la démonstration. Mêmes principes que la plateforme Kubernetes (décision D6),
+# avec deux adaptations :
+#  - sans Istio, le taux d'erreur vient des métriques Spring Boot (http_server_requests) ;
+#  - délais raccourcis pour que les alertes se déclenchent pendant le live.
+groups:
+  - name: radar-api
+    rules:
+      - alert: RadarApiDown
+        expr: up{job="radar-api"} == 0
+        for: 30s
+        labels:
+          severity: critical
+        annotations:
+          summary: "radar-api ne répond plus"
+          description: "Le front affiche « API indisponible ». Scénario : make panne-api."
+      - alert: RadarApiErrorRate
+        expr: |
+          sum(rate(http_server_requests_seconds_count{job="radar-api", status=~"5.."}[2m]))
+          / sum(rate(http_server_requests_seconds_count{job="radar-api"}[2m])) > 0.05
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Plus de 5 % d'erreurs 5xx sur radar-api"
+          description: "Taux d'erreur : {{ $value | humanizePercentage }}."
+
+  - name: radar-collecte
+    rules:
+      - alert: RadarCollectorDown
+        expr: up{job="signal-collector"} == 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Le collecteur est arrêté : la veille ne se met plus à jour"
+          description: "L'API continue de servir le radar (isolation des pannes, décision D1). Scénario : make panne-collecteur."
+      - alert: RadarCollectorStale
+        expr: |
+          (time() - max by (source) (radar_collector_last_success)) > 6 * 3600
+          and max by (source) (radar_collector_last_success) > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Source {{ $labels.source }} non collectée depuis plus de 6 h"
+
+  - name: radar-journaux
+    rules:
+      - alert: RadarErrorLogsSpike
+        expr: sum by (app) (rate(radar_log_events_total{level="error"}[2m])) > 0.05
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Pic de journaux d'erreur pour {{ $labels.app }}"
+          description: "Investiguer dans Grafana, Explore, Loki : {app=\"{{ $labels.app }}\", level=\"error\"}"
+
+  - name: radar-metier
+    rules:
+      - alert: RadarDisruptionDetected
+        # Seuil abaissé à 0,3 pour la démonstration (0,5 dans la plateforme cible)
+        expr: max by (topic, quadrant) (radar_topic_disruption_index) > 0.3
+        for: 1m
+        labels:
+          severity: info
+          team: veille
+        annotations:
+          summary: "Signal de rupture : {{ $labels.topic }}"
+          description: "Indice {{ $value | humanize }} ({{ $labels.quadrant }}). À qualifier en revue hebdomadaire."

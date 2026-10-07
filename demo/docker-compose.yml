@@ -1,0 +1,120 @@
+# Démonstration « cours » : le radar industrialisé, sans Kubernetes.
+#
+#   make up              application seule (≈ 1,5 Go d'images), sur http://localhost:8088
+#   make up-complet      application et observabilité (≈ 2,5 Go d'images), Grafana sur http://localhost:3000
+#
+# Ce qui est montré en direct : collecte réelle, API, front, boucle de rétroaction, métriques,
+# alertes et routage (Prometheus, Alertmanager), journaux structurés (Vector vers Loki), tableau de bord.
+# Ce qui est présenté par lecture des manifestes (dossier ../plateforme) : maillage Istio,
+# cluster PostgreSQL à 3 instances, canari, GitOps.
+name: radar-cours
+
+services:
+  # ------------------------------------------------------------------ application
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: radar
+      POSTGRES_USER: radar
+      POSTGRES_PASSWORD: radar
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U radar -d radar"]
+      interval: 5s
+      retries: 10
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  radar-api:
+    build: ../plateforme/services/radar-api
+    image: radar/radar-api:1.0.0
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/radar
+      DB_USERNAME: radar
+      DB_PASSWORD: radar
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8080:8080"                       # API publique
+      - "8081:8081"                       # métriques et sondes (/actuator/prometheus)
+
+  signal-collector:
+    build: ../plateforme/services/signal-collector
+    image: radar/signal-collector:1.0.0
+    environment:
+      RADAR_API_URL: http://radar-api:8080
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+    depends_on:
+      - radar-api
+    ports:
+      - "8082:8081"
+
+  radar-web:
+    build: ../plateforme/frontend/radar-web
+    image: radar/radar-web:1.0.0
+    depends_on:
+      - radar-api
+    ports:
+      - "8088:8080"
+
+  # ------------------------------------------------------------------ observabilité (profil « observabilite »)
+  prometheus:
+    image: prom/prometheus:v3.15.0
+    profiles: [observabilite]
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=2d
+    volumes:
+      - ./observabilite/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./observabilite/regles-alertes.yml:/etc/prometheus/regles-alertes.yml:ro
+    ports:
+      - "9090:9090"
+
+  alertmanager:
+    image: prom/alertmanager:v0.34.1
+    profiles: [observabilite]
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml
+    volumes:
+      - ./observabilite/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+    ports:
+      - "9093:9093"
+
+  loki:
+    image: grafana/loki:3.7.8
+    profiles: [observabilite]
+    command: -config.file=/etc/loki/local-config.yaml   # configuration mono-instance fournie par l'image
+    ports:
+      - "3100:3100"
+
+  vector:
+    image: timberio/vector:0.59.0-alpine
+    profiles: [observabilite]
+    command: ["--config", "/etc/vector/vector.yaml"]
+    volumes:
+      - ./observabilite/vector.yaml:/etc/vector/vector.yaml:ro
+      # Lecture des journaux des conteneurs. En Kubernetes, Vector lit les fichiers de journaux des nœuds
+      # (DaemonSet) ; ici, il interroge le démon Docker en lecture seule.
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      - loki
+
+  grafana:
+    image: grafana/grafana:13.2.3
+    profiles: [observabilite]
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: radar-demo
+      GF_AUTH_ANONYMOUS_ENABLED: "true"           # consultation sans connexion pendant la démonstration
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/radar-demo.json
+    volumes:
+      - ./observabilite/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observabilite/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      - prometheus
+      - loki
+    ports:
+      - "3000:3000"
+
+volumes:
+  pgdata: {}
