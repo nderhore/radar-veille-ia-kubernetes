@@ -5,7 +5,7 @@ spring:
     virtual:
       enabled: true                       # Java 21 : threads virtuels pour les requêtes HTTP
   datasource:
-    # En Kubernetes : PgBouncer (Pooler CloudNativePG) devant le primaire ; identifiants issus du secret radar-db-app
+    # Identifiants fournis par l'environnement (fichier .env non versionné en production)
     url: ${DB_URL:jdbc:postgresql://localhost:5432/radar}
     username: ${DB_USERNAME:radar}
     password: ${DB_PASSWORD:radar}
@@ -122,12 +122,12 @@ radar:
         intitule: "Plateforme et exploitation"
         enjeu: "Fiabilité et coût d'exploitation de notre plateforme : signaux de révision du registre des décisions"
         kiq:
-          - {id: KIQ-5.1, question: "Le mode ambient d'Istio couvre-t-il nos besoins L7 avec une maturité suffisante ?",
-             decision: "Révision de la décision D3 (maillage)", proprietaire: "Équipe plateforme", horizon: "12 mois"}
+          - {id: KIQ-5.1, question: "À partir de quelle charge un orchestrateur de conteneurs devient-il rentable pour nous ?",
+             decision: "Révision de la décision D2 (hébergement sous Docker Compose)", proprietaire: "Équipe plateforme", horizon: "12 mois"}
           - {id: KIQ-5.2, question: "OpenTelemetry est-il devenu le standard de collecte de nos journaux, métriques et traces ?",
-             decision: "Révision de la décision D7 (journaux)", proprietaire: "Équipe plateforme", horizon: "12 mois"}
-          - {id: KIQ-5.3, question: "Quelles technologies réduiraient le coût d'exploitation de nos bases de données ?",
-             decision: "Révision de la décision D4 (PostgreSQL)", proprietaire: "Équipe plateforme", horizon: "18 mois"}
+             decision: "Révision de la décision D5 (supervision)", proprietaire: "Équipe plateforme", horizon: "12 mois"}
+          - {id: KIQ-5.3, question: "Une offre PostgreSQL managée européenne ferait-elle mieux que nos sauvegardes ?",
+             decision: "Révision de la décision D4 (base de données)", proprietaire: "Équipe plateforme", horizon: "18 mois"}
 
     # nature : opportunite | menace | mixte
     technologies:
@@ -163,13 +163,13 @@ radar:
          opportunite: "Expliquer les décisions des modèles : exigence de transparence des clients publics"}
       - {label: "AI Act", axe: KIT-4, kiq: KIQ-4.1, nature: mixte, synonyms: ["ai act", "eu ai act"],
          opportunite: "Obligations nouvelles ; avantage concurrentiel si la conformité est démontrée tôt"}
-      - {label: "Istio ambient", axe: KIT-5, kiq: KIQ-5.1, nature: opportunite, synonyms: ["ambient mesh", "istio ambient", "ztunnel"],
-         opportunite: "Réduire l'empreinte mémoire du maillage (fin du proxy par pod)"}
-      - {label: "eBPF", axe: KIT-5, kiq: KIQ-5.1, nature: opportunite, synonyms: ["ebpf", "cilium"],
-         opportunite: "Observabilité et sécurité réseau sans modifier les applications"}
-      - {label: "Kubernetes Gateway API", axe: KIT-5, kiq: KIQ-5.1, nature: opportunite, synonyms: ["gateway api", "httproute"],
-         opportunite: "Standardiser l'exposition des services, indépendamment du maillage"}
+      - {label: "Kubernetes", axe: KIT-5, kiq: KIQ-5.1, nature: opportunite, synonyms: ["kubernetes", "k8s"],
+         opportunite: "Haute disponibilité sur plusieurs serveurs, le jour où la charge le justifiera"}
+      - {label: "Podman", axe: KIT-5, kiq: KIQ-5.1, nature: opportunite, synonyms: ["podman", "quadlet"],
+         opportunite: "Conteneurs sans démon, pilotés par systemd, sur un seul serveur"}
       - {label: "OpenTelemetry", axe: KIT-5, kiq: KIQ-5.2, nature: opportunite, synonyms: ["opentelemetry", "otel"],
          opportunite: "Unifier journaux, métriques et traces avec un standard ouvert"}
-      - {label: "Opérateurs PostgreSQL", axe: KIT-5, kiq: KIQ-5.3, nature: opportunite, synonyms: ["cloudnativepg", "postgres operator", "cnpg"],
-         opportunite: "Industrialiser l'exploitation des bases (sauvegardes, bascule) à moindre coût"}
+      - {label: "eBPF", axe: KIT-5, kiq: KIQ-5.2, nature: opportunite, synonyms: ["ebpf"],
+         opportunite: "Observabilité et sécurité réseau sans modifier les applications"}
+      - {label: "PostgreSQL managé", axe: KIT-5, kiq: KIQ-5.3, nature: opportunite, synonyms: ["managed postgres", "managed postgresql", "serverless postgres", "postgres as a service"],
+         opportunite: "Bascule automatique et restauration à un instant donné, sans exploitation"}

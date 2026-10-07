@@ -50,10 +50,11 @@ collector:
       - "local LLM"                   # KIQ-3.2
       - "AI Act"                      # KIQ-4.1
       - "prompt injection"            # KIQ-4.2
-      - "Istio ambient"               # KIQ-5.1
-      - "eBPF"                        # KIQ-5.1
+      - "Kubernetes"                  # KIQ-5.1
+      - "Podman"                      # KIQ-5.1
       - "OpenTelemetry"               # KIQ-5.2
-      - "Postgres Kubernetes"         # KIQ-5.3
+      - "eBPF"                        # KIQ-5.2
+      - "managed Postgres"            # KIQ-5.3
   arxiv:
     enabled: true
     min-engagement: 0
