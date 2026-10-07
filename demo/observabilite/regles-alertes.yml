@@ -1,7 +1,6 @@
-# Règles d'alerte de la démonstration. Mêmes principes que la plateforme Kubernetes (décision D6),
-# avec deux adaptations :
-#  - sans Istio, le taux d'erreur vient des métriques Spring Boot (http_server_requests) ;
-#  - délais raccourcis pour que les alertes se déclenchent pendant le live.
+# Règles d'alerte (décision D5) : une alerte par symptôme visible. Le taux d'erreur vient des
+# métriques Spring Boot (http_server_requests). Délais raccourcis pour que les alertes se
+# déclenchent pendant le live.
 groups:
   - name: radar-api
     rules:
@@ -22,7 +21,7 @@ groups:
           severity: critical
         annotations:
           summary: "Plus de 5 % d'erreurs 5xx sur radar-api"
-          description: "Taux d'erreur : {{ $value | humanizePercentage }}."
+          description: "Taux d'erreur : {{ $value | humanizePercentage }}. Vérifier la base (make panne-base) et la dernière mise en production."
 
   - name: radar-collecte
     rules:
@@ -58,7 +57,7 @@ groups:
   - name: radar-metier
     rules:
       - alert: RadarDisruptionDetected
-        # Seuil abaissé à 0,3 pour la démonstration (0,5 dans la plateforme cible)
+        # Seuil abaissé à 0,3 pour la démonstration (0,5 en production)
         expr: max by (topic, quadrant) (radar_topic_disruption_index) > 0.3
         for: 1m
         labels:

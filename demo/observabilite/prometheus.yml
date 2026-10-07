@@ -1,4 +1,4 @@
-# Prometheus : équivalent Docker Compose des ServiceMonitor de la plateforme Kubernetes.
+# Prometheus (décision D5) : collecte des métriques de l'API, du collecteur et de Vector.
 global:
   scrape_interval: 15s
   evaluation_interval: 15s

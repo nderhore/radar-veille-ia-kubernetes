@@ -9,3 +9,6 @@ dist/
 .idea/
 .vscode/
 .DS_Store
+
+# Sauvegardes locales de la démonstration
+demo/sauvegardes/

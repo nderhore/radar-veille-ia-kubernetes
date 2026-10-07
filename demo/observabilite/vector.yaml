@@ -1,6 +1,6 @@
-# Vector : même chaîne que la plateforme Kubernetes (décision D7) :
-# journaux des conteneurs, analyse (JSON ECS de Spring Boot), masquage RGPD, filtrage du bruit
-# résultat : Loki (journaux) + Prometheus (métrique radar_log_events_total).
+# Vector (décision D5) : lecture des journaux des conteneurs via le démon Docker, analyse
+# (JSON ECS de Spring Boot), masquage RGPD, filtrage du bruit. Destinations : Loki (journaux)
+# et Prometheus (métrique radar_log_events_total).
 data_dir: /tmp
 
 sources:
