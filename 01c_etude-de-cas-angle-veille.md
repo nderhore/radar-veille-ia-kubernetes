@@ -87,7 +87,7 @@ Données réelles collectées le 7 octobre 2026 : 12 169 signaux, période réce
 
 Le radar d'Altéa est un service web : un collecteur interroge les sources toutes les 3 heures, une API calcule les indicateurs et rattache chaque sujet au protocole (axe, question, action, responsable, date de revue), une interface affiche le radar et la **couverture** de chaque question. Une alerte prévient l'équipe veille lorsqu'un sujet franchit le seuil de rupture, et une autre lorsque la collecte s'arrête : une veille qui tombe en panne sans prévenir donne une fausse assurance.
 
-La démonstration (`demo/`) montre ce service en fonctionnement. Le détail des choix techniques figure en annexe (`01b_etude-de-cas-version-detaillee.md`, dossier `plateforme/`).
+La démonstration (`demo/`) montre ce service en fonctionnement. Le détail des choix techniques figure en annexe, dans le dossier `plateforme/`.
 
 ## 8. Ce qu'il faut retenir
 

@@ -10,8 +10,7 @@
 
 | Fichier | Public | Contenu |
 |---|---|---|
-| `01_etude-de-cas.md` | Apprenants | **Version courte, angle technique et pannes** : Altéa Services et ses défis, exigences, architecture, 6 décisions clés, 5 pannes et les bonnes réactions. Variantes : `01b_…` (version détaillée, 13 décisions), `01c_…` (angle détection des ruptures) |
-| `02_guide-de-demonstration.md` | Intervenant | Préparation, déroulé indicatif, commandes, questions attendues |
+| `01_etude-de-cas.md` | Apprenants | **Version courte, angle technique et pannes** : Altéa Services et ses défis, exigences, architecture, 6 décisions clés, 5 pannes et les bonnes réactions. Variante : `01c_…` (angle détection des ruptures) |
 | `03_slides-etude-de-cas.pptx` | Projection | Diaporama de 24 diapositives, notes de présentation incluses |
 | `demo/` | Démonstration | **Docker Compose uniquement** : application, alertes, journaux, tableau de bord. Voir `demo/README.md` |
 
