@@ -2,7 +2,6 @@
 
 *Mastère CTO & Tech Lead : prolongement du live « Définition du protocole de veille stratégique »*
 
-> Version courte, centrée sur l'architecture et les pannes. Détail complet des options et critères : `01b_etude-de-cas-version-detaillee.md`. Variante centrée sur la détection des ruptures : `01c_etude-de-cas-angle-veille.md`.
 
 ---
 
