@@ -1,0 +1,204 @@
+# GitOps (décision D9) : Argo CD réconcilie en continu l'état du cluster avec le dépôt.
+# Ordre de synchronisation (sync-wave) : CRD et opérateurs, maillage, observabilité, application.
+# Les valeurs Helm sont celles utilisées sur kind : une seule source de vérité.
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: radar
+  namespace: argocd
+spec:
+  description: Radar d'innovation : plateforme et application
+  sourceRepos:
+    - https://git.example.org/radar-platform.git
+    - https://istio-release.storage.googleapis.com/charts
+    - https://cloudnative-pg.github.io/charts
+    - https://prometheus-community.github.io/helm-charts
+    - https://grafana.github.io/helm-charts
+    - https://helm.vector.dev
+  destinations:
+    - {server: https://kubernetes.default.svc, namespace: "*"}
+  clusterResourceWhitelist:
+    - {group: "*", kind: "*"}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: istio-base
+  namespace: argocd
+  annotations: {argocd.argoproj.io/sync-wave: "-20"}
+spec:
+  project: radar
+  source:
+    repoURL: https://istio-release.storage.googleapis.com/charts
+    chart: base
+    targetRevision: 1.30.5
+  destination: {server: https://kubernetes.default.svc, namespace: istio-system}
+  syncPolicy:
+    automated: {prune: true, selfHeal: true}
+    syncOptions: [CreateNamespace=true, ServerSideApply=true]
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: kube-prometheus-stack
+  namespace: argocd
+  annotations: {argocd.argoproj.io/sync-wave: "-20"}
+spec:
+  project: radar
+  sources:
+    - repoURL: https://prometheus-community.github.io/helm-charts
+      chart: kube-prometheus-stack
+      targetRevision: 92.1.0
+      helm:
+        valueFiles: [$values/deploy/platform/observability/kube-prometheus-stack.values.yaml]
+    - repoURL: https://git.example.org/radar-platform.git
+      targetRevision: main
+      ref: values
+  destination: {server: https://kubernetes.default.svc, namespace: observability}
+  syncPolicy:
+    automated: {prune: true, selfHeal: true}
+    syncOptions: [CreateNamespace=true, ServerSideApply=true]
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: cloudnative-pg
+  namespace: argocd
+  annotations: {argocd.argoproj.io/sync-wave: "-10"}
+spec:
+  project: radar
+  sources:
+    - repoURL: https://cloudnative-pg.github.io/charts
+      chart: cloudnative-pg
+      targetRevision: 0.29.1
+      helm:
+        valueFiles: [$values/deploy/platform/cnpg/operator.values.yaml]
+    - repoURL: https://git.example.org/radar-platform.git
+      targetRevision: main
+      ref: values
+  destination: {server: https://kubernetes.default.svc, namespace: cnpg-system}
+  syncPolicy:
+    automated: {prune: true, selfHeal: true}
+    syncOptions: [CreateNamespace=true, ServerSideApply=true]
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: istio-cni
+  namespace: argocd
+  annotations: {argocd.argoproj.io/sync-wave: "-10"}
+spec:
+  project: radar
+  sources:
+    - repoURL: https://istio-release.storage.googleapis.com/charts
+      chart: cni
+      targetRevision: 1.30.5
+      helm:
+        valueFiles: [$values/deploy/platform/istio/cni.values.yaml]
+    - repoURL: https://git.example.org/radar-platform.git
+      targetRevision: main
+      ref: values
+  destination: {server: https://kubernetes.default.svc, namespace: istio-system}
+  syncPolicy:
+    automated: {prune: true, selfHeal: true}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: istiod
+  namespace: argocd
+  annotations: {argocd.argoproj.io/sync-wave: "-9"}
+spec:
+  project: radar
+  sources:
+    - repoURL: https://istio-release.storage.googleapis.com/charts
+      chart: istiod
+      targetRevision: 1.30.5
+      helm:
+        valueFiles: [$values/deploy/platform/istio/istiod.values.yaml]
+    - repoURL: https://git.example.org/radar-platform.git
+      targetRevision: main
+      ref: values
+  destination: {server: https://kubernetes.default.svc, namespace: istio-system}
+  syncPolicy:
+    automated: {prune: true, selfHeal: true}
+  # Le webhook de validation est modifié par istiod lui-même : ne pas le signaler comme dérive
+  ignoreDifferences:
+    - group: admissionregistration.k8s.io
+      kind: ValidatingWebhookConfiguration
+      jsonPointers: [/webhooks/0/failurePolicy]
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: istio-ingressgateway
+  namespace: argocd
+  annotations: {argocd.argoproj.io/sync-wave: "-8"}
+spec:
+  project: radar
+  sources:
+    - repoURL: https://istio-release.storage.googleapis.com/charts
+      chart: gateway
+      targetRevision: 1.30.5
+      helm:
+        valueFiles: [$values/deploy/platform/istio/gateway.values.yaml]
+        valuesObject:
+          service:
+            type: LoadBalancer        # production : équilibreur du fournisseur (kind : NodePort)
+    - repoURL: https://git.example.org/radar-platform.git
+      targetRevision: main
+      ref: values
+  destination: {server: https://kubernetes.default.svc, namespace: istio-system}
+  syncPolicy:
+    automated: {prune: true, selfHeal: true}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: logs-and-traces
+  namespace: argocd
+  annotations: {argocd.argoproj.io/sync-wave: "-5"}
+spec:
+  project: radar
+  sources:
+    - repoURL: https://grafana.github.io/helm-charts
+      chart: loki
+      targetRevision: 7.3.0
+      helm:
+        valueFiles: [$values/deploy/platform/observability/loki.values.yaml]
+    - repoURL: https://grafana.github.io/helm-charts
+      chart: tempo
+      targetRevision: 1.24.4
+      helm:
+        valueFiles: [$values/deploy/platform/observability/tempo.values.yaml]
+    - repoURL: https://helm.vector.dev
+      chart: vector
+      targetRevision: 0.59.0
+      helm:
+        valueFiles: [$values/deploy/platform/observability/vector.values.yaml]
+    - repoURL: https://git.example.org/radar-platform.git
+      targetRevision: main
+      ref: values
+  destination: {server: https://kubernetes.default.svc, namespace: observability}
+  syncPolicy:
+    automated: {prune: true, selfHeal: true}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: radar
+  namespace: argocd
+  annotations: {argocd.argoproj.io/sync-wave: "0"}
+spec:
+  project: radar
+  source:
+    repoURL: https://git.example.org/radar-platform.git
+    targetRevision: main
+    path: deploy/app/overlays/prod
+  destination: {server: https://kubernetes.default.svc, namespace: radar}
+  syncPolicy:
+    automated: {prune: true, selfHeal: true}     # toute modification manuelle du cluster est annulée
+    syncOptions: [ServerSideApply=true]
+    retry:
+      limit: 5
+      backoff: {duration: 10s, factor: 2, maxDuration: 3m}

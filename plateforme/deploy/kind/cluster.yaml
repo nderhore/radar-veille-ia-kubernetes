@@ -1,0 +1,17 @@
+# Cluster local de démonstration : 1 plan de contrôle + 2 nœuds de travail.
+# Les 3 instances PostgreSQL se répartissent sur les nœuds (anti-affinité préférentielle).
+# La passerelle Istio est exposée sur http://localhost:8080 (NodePort 30080).
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: radar
+nodes:
+  - role: control-plane
+    extraPortMappings:
+      - containerPort: 30080      # passerelle Istio (HTTP)
+        hostPort: 8080
+        protocol: TCP
+      - containerPort: 30300      # Grafana
+        hostPort: 3000
+        protocol: TCP
+  - role: worker
+  - role: worker

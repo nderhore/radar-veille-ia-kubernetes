@@ -1,0 +1,129 @@
+# Chart prometheus-community/kube-prometheus-stack : Prometheus, Alertmanager, Grafana, exporteurs.
+fullnameOverride: kps
+
+# Composants du plan de contrôle non joignables sur kind et sur la plupart des offres managées
+kubeEtcd:
+  enabled: false
+kubeControllerManager:
+  enabled: false
+kubeScheduler:
+  enabled: false
+kubeProxy:
+  enabled: false
+
+prometheus:
+  prometheusSpec:
+    # Découverte de TOUS les ServiceMonitor / PodMonitor / PrometheusRule du cluster,
+    # pas seulement ceux portant le label de la release
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+    ruleSelectorNilUsesHelmValues: false
+    retention: 7d
+    resources:
+      requests:
+        cpu: 100m
+        memory: 400Mi
+
+alertmanager:
+  alertmanagerSpec:
+    # URL des webhooks lues depuis un Secret monté : aucun secret dans Git
+    secrets:
+      - alertmanager-webhooks
+    resources:
+      requests:
+        cpu: 10m
+        memory: 32Mi
+  config:
+    global:
+      resolve_timeout: 5m
+    route:
+      receiver: ops-slack
+      group_by: [alertname, namespace]
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 4h
+      routes:
+        # Alerte MÉTIER (signal de rupture) : canal de l'équipe veille, jamais l'astreinte
+        - receiver: veille-slack
+          matchers: ['team="veille"']
+          group_wait: 5m
+          repeat_interval: 24h
+        # Incident : astreinte (PagerDuty, Opsgenie… ici un webhook générique)
+        - receiver: astreinte
+          matchers: ['severity="critical"']
+          repeat_interval: 1h
+        - receiver: "null"
+          matchers: ['alertname="Watchdog"']
+    inhibit_rules:
+      # Une alerte critique masque l'alerte d'avertissement de même nom
+      - source_matchers: ['severity="critical"']
+        target_matchers: ['severity="warning"']
+        equal: [alertname, namespace]
+    receivers:
+      - name: "null"
+      - name: ops-slack
+        slack_configs:
+          - api_url_file: /etc/alertmanager/secrets/alertmanager-webhooks/slack-ops
+            channel: "#radar-ops"
+            send_resolved: true
+            title: '[{{ .Status | toUpper }}] {{ .CommonLabels.alertname }}'
+            text: '{{ range .Alerts }}{{ .Annotations.summary }} : {{ .Annotations.runbook_url }}{{ "\n" }}{{ end }}'
+      - name: veille-slack
+        slack_configs:
+          - api_url_file: /etc/alertmanager/secrets/alertmanager-webhooks/slack-veille
+            channel: "#veille-radar"
+            title: 'Signal de rupture : {{ .CommonLabels.topic }}'
+            text: '{{ range .Alerts }}{{ .Annotations.description }}{{ "\n" }}{{ end }}'
+      - name: astreinte
+        webhook_configs:
+          - url_file: /etc/alertmanager/secrets/alertmanager-webhooks/astreinte
+            send_resolved: true
+
+grafana:
+  adminPassword: radar-demo          # démonstration uniquement ; production : secret externe (cf. décision D12)
+  service:
+    type: NodePort
+    nodePort: 30300
+  sidecar:
+    dashboards:
+      enabled: true
+      label: grafana_dashboard
+      labelValue: "1"
+      searchNamespace: ALL
+  additionalDataSources:
+    - name: Loki
+      uid: loki
+      type: loki
+      url: http://loki.observability.svc.cluster.local:3100
+      jsonData:
+        derivedFields:
+          - name: trace
+            matcherRegex: '"trace_id":"(\w+)"'
+            datasourceUid: tempo
+            url: '$${__value.raw}'
+    - name: Tempo
+      uid: tempo
+      type: tempo
+      url: http://tempo.observability.svc.cluster.local:3200
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+
+prometheusOperator:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+
+kube-state-metrics:
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+
+prometheus-node-exporter:
+  resources:
+    requests:
+      cpu: 10m
+      memory: 16Mi
