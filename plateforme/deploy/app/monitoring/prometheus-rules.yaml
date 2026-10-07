@@ -1,0 +1,161 @@
+# Règles d'alerte du radar. Principes (décision D6) :
+#  - alerter sur les symptômes vus par l'utilisateur (SLO), pas sur chaque cause ;
+#  - chaque alerte porte un runbook ;
+#  - les alertes MÉTIER (team=veille) sont routées vers l'équipe veille, jamais vers l'astreinte.
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: radar
+spec:
+  groups:
+    # ------------------------------------------------------------------ SLO de disponibilité de l'API
+    # Objectif : 99,5 % de requêtes sans erreur 5xx sur 30 jours : budget d'erreur = 0,5 %
+    - name: radar-slo-recording
+      interval: 30s
+      rules:
+        - record: radar:api_requests:rate5m
+          expr: sum(rate(istio_requests_total{reporter="destination", destination_service_name="radar-api", destination_service_namespace="radar"}[5m]))
+        - record: radar:api_errors:ratio_rate5m
+          expr: |
+            sum(rate(istio_requests_total{reporter="destination", destination_service_name="radar-api", destination_service_namespace="radar", response_code=~"5.."}[5m]))
+            / sum(rate(istio_requests_total{reporter="destination", destination_service_name="radar-api", destination_service_namespace="radar"}[5m]))
+        - record: radar:api_errors:ratio_rate30m
+          expr: |
+            sum(rate(istio_requests_total{reporter="destination", destination_service_name="radar-api", destination_service_namespace="radar", response_code=~"5.."}[30m]))
+            / sum(rate(istio_requests_total{reporter="destination", destination_service_name="radar-api", destination_service_namespace="radar"}[30m]))
+        - record: radar:api_errors:ratio_rate1h
+          expr: |
+            sum(rate(istio_requests_total{reporter="destination", destination_service_name="radar-api", destination_service_namespace="radar", response_code=~"5.."}[1h]))
+            / sum(rate(istio_requests_total{reporter="destination", destination_service_name="radar-api", destination_service_namespace="radar"}[1h]))
+        - record: radar:api_errors:ratio_rate6h
+          expr: |
+            sum(rate(istio_requests_total{reporter="destination", destination_service_name="radar-api", destination_service_namespace="radar", response_code=~"5.."}[6h]))
+            / sum(rate(istio_requests_total{reporter="destination", destination_service_name="radar-api", destination_service_namespace="radar"}[6h]))
+        - record: radar:api_latency_p95:5m
+          expr: histogram_quantile(0.95, sum by (le) (rate(istio_request_duration_milliseconds_bucket{reporter="destination", destination_service_name="radar-api", destination_service_namespace="radar"}[5m])))
+
+    - name: radar-slo-alerts
+      rules:
+        # Taux de consommation multi-fenêtres (Google SRE Workbook, chap. 5) :
+        # ×14,4 sur 1 h consomme 2 % du budget mensuel ; ×6 sur 6 h en consomme 5 %.
+        - alert: RadarApiErrorBudgetBurnFast
+          expr: radar:api_errors:ratio_rate1h > (14.4 * 0.005) and radar:api_errors:ratio_rate5m > (14.4 * 0.005)
+          for: 2m
+          labels:
+            severity: critical
+          annotations:
+            summary: "radar-api consomme son budget d'erreur 14 fois trop vite"
+            description: "Taux d'erreur 5xx sur 1 h : {{ $value | humanizePercentage }} (SLO 99,5 %)."
+            runbook_url: https://git.example.org/radar-platform/-/blob/main/docs/runbooks.md#radarapierrorbudgetburn
+        - alert: RadarApiErrorBudgetBurnSlow
+          expr: radar:api_errors:ratio_rate6h > (6 * 0.005) and radar:api_errors:ratio_rate30m > (6 * 0.005)
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "radar-api consomme son budget d'erreur 6 fois trop vite"
+            description: "Taux d'erreur 5xx sur 6 h : {{ $value | humanizePercentage }}."
+            runbook_url: https://git.example.org/radar-platform/-/blob/main/docs/runbooks.md#radarapierrorbudgetburn
+        - alert: RadarApiLatencyHigh
+          expr: radar:api_latency_p95:5m > 1000
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Latence p95 de radar-api supérieure à 1 s"
+            description: "p95 = {{ $value | humanize }} ms."
+            runbook_url: https://git.example.org/radar-platform/-/blob/main/docs/runbooks.md#radarapilatencyhigh
+        - alert: RadarApiDown
+          expr: sum(up{namespace="radar", service="radar-api"}) == 0 or absent(up{namespace="radar", service="radar-api"})
+          for: 2m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Aucune instance de radar-api ne répond"
+            runbook_url: https://git.example.org/radar-platform/-/blob/main/docs/runbooks.md#radarapidown
+
+    # ------------------------------------------------------------------ Collecte (fraîcheur de la veille)
+    - name: radar-collector
+      rules:
+        - alert: RadarCollectorStale
+          expr: |
+            (time() - max by (source) (radar_collector_last_success{namespace="radar"})) > 6 * 3600
+            and max by (source) (radar_collector_last_success{namespace="radar"}) > 0
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Source {{ $labels.source }} non collectée depuis plus de 6 h"
+            description: "La veille sur cette source n'est plus à jour : le radar risque de manquer des signaux."
+            runbook_url: https://git.example.org/radar-platform/-/blob/main/docs/runbooks.md#radarcollectorstale
+        - alert: RadarCollectorNeverSucceeded
+          expr: max by (source) (radar_collector_last_success{namespace="radar"}) == 0
+          for: 1h
+          labels:
+            severity: warning
+          annotations:
+            summary: "Source {{ $labels.source }} jamais collectée depuis le démarrage"
+            runbook_url: https://git.example.org/radar-platform/-/blob/main/docs/runbooks.md#radarcollectorstale
+        - alert: RadarCollectorErrors
+          expr: sum by (source) (increase(radar_collector_errors_total{namespace="radar"}[3h])) > 2
+          labels:
+            severity: warning
+          annotations:
+            summary: "Erreurs de collecte répétées sur {{ $labels.source }}"
+            runbook_url: https://git.example.org/radar-platform/-/blob/main/docs/runbooks.md#radarcollectorerrors
+
+    # ------------------------------------------------------------------ PostgreSQL (CloudNativePG)
+    - name: radar-postgres
+      rules:
+        - alert: RadarPostgresInstanceMissing
+          expr: sum(cnpg_collector_up{namespace="radar"}) < 3
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Le cluster radar-db fonctionne avec moins de 3 instances"
+            runbook_url: https://git.example.org/radar-platform/-/blob/main/docs/runbooks.md#radarpostgresinstancemissing
+        - alert: RadarPostgresNoSyncReplica
+          # Réplication synchrone (number: 1) : sans réplica disponible, les écritures sont bloquées
+          expr: max(cnpg_pg_replication_streaming_replicas{namespace="radar"}) < 1
+          for: 2m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Aucun réplica PostgreSQL en flux : les écritures risquent d'être bloquées"
+            runbook_url: https://git.example.org/radar-platform/-/blob/main/docs/runbooks.md#radarpostgresnosyncreplica
+        - alert: RadarPostgresReplicationLag
+          expr: max(cnpg_pg_replication_lag{namespace="radar"}) > 30
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Retard de réplication de {{ $value | humanizeDuration }}"
+            runbook_url: https://git.example.org/radar-platform/-/blob/main/docs/runbooks.md#radarpostgresreplicationlag
+
+    # ------------------------------------------------------------------ Journaux (métriques produites par Vector)
+    - name: radar-logs
+      rules:
+        - alert: RadarErrorLogsSpike
+          expr: sum by (app) (rate(radar_log_events_total{source_namespace="radar", level="error"}[5m])) > 0.2
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Pic de journaux d'erreur pour {{ $labels.app }}"
+            description: "{{ $value | humanize }} erreurs/s. Investiguer dans Grafana, Explore, Loki : {app=\"{{ $labels.app }}\", level=\"error\"}"
+            runbook_url: https://git.example.org/radar-platform/-/blob/main/docs/runbooks.md#radarerrorlogsspike
+
+    # ------------------------------------------------------------------ Alerte MÉTIER : signal de rupture
+    - name: radar-business
+      rules:
+        - alert: RadarDisruptionDetected
+          expr: max by (topic, quadrant) (radar_topic_disruption_index{namespace="radar"}) > 0.5
+          for: 30m
+          labels:
+            severity: info
+            team: veille
+          annotations:
+            summary: "Signal de rupture : {{ $labels.topic }}"
+            description: "Indice de rupture {{ $value | humanize }} pour « {{ $labels.topic }} » ({{ $labels.quadrant }}). À qualifier en revue hebdomadaire."
+            runbook_url: https://git.example.org/radar-platform/-/blob/main/docs/runbooks.md#radardisruptiondetected

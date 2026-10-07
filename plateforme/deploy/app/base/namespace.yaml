@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: radar
+  labels:
+    istio-injection: enabled                         # injection automatique du proxy Envoy
+    # Pod Security Admission : « baseline » appliqué, « restricted » signalé (cible de la décision D13)
+    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/audit: restricted

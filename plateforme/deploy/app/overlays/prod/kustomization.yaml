@@ -1,0 +1,36 @@
+# Production : images signées du registre, TLS, sauvegardes, PostgreSQL réparti, profil de sécurité « restricted ».
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../base
+  - ../../postgres
+  - ../../mesh
+  - ../../monitoring
+  - certificate.yaml
+  - backup.yaml
+images:
+  - name: radar/radar-api
+    newName: ghcr.io/example-org/radar-api
+    newTag: 1.0.0
+  - name: radar/signal-collector
+    newName: ghcr.io/example-org/signal-collector
+    newTag: 1.0.0
+  - name: radar/radar-web
+    newName: ghcr.io/example-org/radar-web
+    newTag: 1.0.0
+patches:
+  - path: patches/namespace-restricted.yaml
+  - path: patches/radar-api-hpa.yaml
+  - path: patches/radar-api-resources.yaml
+  - path: patches/postgres-production.yaml
+  - target:
+      kind: Gateway
+      name: radar-gateway
+    path: patches/gateway-https.yaml
+  - target:
+      kind: VirtualService
+      name: radar-edge
+    patch: |-
+      - op: replace
+        path: /spec/hosts
+        value: ["radar.example.org"]

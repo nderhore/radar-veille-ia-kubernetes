@@ -1,0 +1,106 @@
+# Version candidate de radar-api (canari). Même Service « radar-api » : c'est Istio qui répartit le trafic.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: radar-api-v2
+  labels:
+    app.kubernetes.io/name: radar-api
+    app.kubernetes.io/component: backend
+spec:
+  replicas: 1
+  revisionHistoryLimit: 5
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0                             # aucune perte de capacité pendant un déploiement
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: radar-api
+      version: v2
+  template:
+    metadata:
+      labels:
+        app: radar-api                              # labels app/version utilisés par Istio (sous-ensembles, télémétrie)
+        version: v2
+        app.kubernetes.io/name: radar-api
+        app.kubernetes.io/part-of: radar
+    spec:
+      serviceAccountName: radar-api
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: radar-api
+      containers:
+        - name: radar-api
+          image: radar/radar-api:1.0.0                # remplacer par la nouvelle version (ex. 1.1.0)
+          ports:
+            - name: http
+              containerPort: 8080
+            - name: management
+              containerPort: 8081
+          env:
+            # Connexion via PgBouncer (Pooler CloudNativePG), TLS exigé
+            - name: DB_URL
+              value: jdbc:postgresql://radar-db-pooler-rw:5432/radar?sslmode=require
+            - name: DB_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: radar-db-app                # secret généré par CloudNativePG
+                  key: username
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: radar-db-app
+                  key: password
+            - name: SPRING_CONFIG_ADDITIONAL_LOCATION
+              value: optional:file:/config/
+          resources:
+            requests:
+              cpu: 100m
+              memory: 384Mi
+            limits:
+              memory: 512Mi                         # pas de limite CPU : évite le bridage (throttling) de la JVM
+          startupProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: management
+            periodSeconds: 5
+            failureThreshold: 36                    # jusqu'à 3 min pour démarrer (migrations Flyway)
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: management
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: management
+            periodSeconds: 5
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: config
+              mountPath: /config
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: config
+          configMap:
+            name: radar-api-config
+        - name: tmp
+          emptyDir: {}

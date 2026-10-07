@@ -1,0 +1,15 @@
+# Environnement de démonstration (kind). Images construites localement puis chargées dans le cluster.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../base
+  - ../../postgres
+  - ../../mesh
+  - ../../monitoring
+images:
+  - name: radar/radar-api
+    newTag: 1.0.0
+  - name: radar/signal-collector
+    newTag: 1.0.0
+  - name: radar/radar-web
+    newTag: 1.0.0

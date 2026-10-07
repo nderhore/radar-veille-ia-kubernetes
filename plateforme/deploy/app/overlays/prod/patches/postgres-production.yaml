@@ -1,0 +1,25 @@
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: radar-db
+  namespace: radar
+spec:
+  storage:
+    size: 50Gi
+    storageClass: premium-rwo                        # classe SSD du fournisseur
+  resources:
+    requests:
+      cpu: "1"
+      memory: 2Gi
+    limits:
+      memory: 2Gi
+  affinity:
+    enablePodAntiAffinity: true
+    topologyKey: topology.kubernetes.io/zone        # une instance par zone de disponibilité
+    podAntiAffinityType: required
+  # Archivage continu des WAL et sauvegardes de base via le plugin Barman Cloud (stockage objet)
+  plugins:
+    - name: barman-cloud.cloudnative-pg.io
+      isWALArchiver: true
+      parameters:
+        barmanObjectName: radar-backups

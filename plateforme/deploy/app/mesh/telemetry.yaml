@@ -1,0 +1,27 @@
+# Télémétrie du namespace : journaux d'accès Envoy et traces (10 % des requêtes) vers Tempo.
+apiVersion: telemetry.istio.io/v1
+kind: Telemetry
+metadata:
+  name: radar
+spec:
+  accessLogging:
+    - providers:
+        - name: envoy
+  tracing:
+    - providers:
+        - name: otel-tracing
+      randomSamplingPercentage: 10
+---
+# Métriques Envoy des pods applicatifs (requêtes, latences et codes vus par le maillage : base des SLO)
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: envoy-stats
+spec:
+  selector:
+    matchExpressions:
+      - {key: security.istio.io/tlsMode, operator: Exists}
+  podMetricsEndpoints:
+    - port: http-envoy-prom
+      path: /stats/prometheus
+      interval: 30s

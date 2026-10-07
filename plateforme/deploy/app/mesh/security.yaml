@@ -1,0 +1,98 @@
+# --- Chiffrement : mTLS obligatoire entre tous les pods maillés du namespace ---
+apiVersion: security.istio.io/v1
+kind: PeerAuthentication
+metadata:
+  name: default
+spec:
+  mtls:
+    mode: STRICT
+---
+# Exception ciblée : le port d'administration 8081 reste joignable en clair par Prometheus,
+# qui n'appartient pas au maillage. Il n'expose que des métriques et des sondes.
+apiVersion: security.istio.io/v1
+kind: PeerAuthentication
+metadata:
+  name: management-port
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/part-of: radar
+  mtls:
+    mode: STRICT
+  portLevelMtls:
+    "8081":
+      mode: PERMISSIVE
+---
+# --- Autorisation : tout est refusé par défaut (politique ALLOW vide = deny-all) ---
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: deny-all
+spec: {}
+---
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-gateway-to-web
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: radar-web
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            principals: ["cluster.local/ns/istio-system/sa/istio-ingressgateway"]
+---
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-gateway-to-public-api
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: radar-api
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            principals: ["cluster.local/ns/istio-system/sa/istio-ingressgateway"]
+      to:
+        - operation:
+            methods: ["GET", "POST"]
+            paths: ["/api/*"]
+---
+# Seule l'identité du collecteur peut alimenter le radar
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-collector-ingest
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: radar-api
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            principals: ["cluster.local/ns/radar/sa/signal-collector"]
+      to:
+        - operation:
+            methods: ["POST"]
+            paths: ["/internal/signals"]
+---
+# Supervision : port d'administration ouvert (requêtes sans identité mTLS, cf. exception ci-dessus)
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-management-port
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/part-of: radar
+  action: ALLOW
+  rules:
+    - to:
+        - operation:
+            ports: ["8081"]
+            methods: ["GET"]

@@ -1,0 +1,19 @@
+# Sortie Internet en liste blanche (meshConfig.outboundTrafficPolicy = REGISTRY_ONLY) :
+# le collecteur ne peut joindre que les sources déclarées dans le protocole de veille.
+# Ajouter une source = ajouter un ServiceEntry (revue de sécurité incluse dans la pull request).
+apiVersion: networking.istio.io/v1
+kind: ServiceEntry
+metadata:
+  name: veille-sources
+spec:
+  hosts:
+    - hn.algolia.com
+    - export.arxiv.org
+    - api.github.com
+  location: MESH_EXTERNAL
+  resolution: DNS
+  ports:
+    - number: 443
+      name: tls
+      protocol: TLS
+  exportTo: ["."]

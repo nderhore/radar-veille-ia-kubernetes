@@ -1,0 +1,183 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: radar-api                                   # identité mTLS : spiffe://cluster.local/ns/radar/sa/radar-api
+automountServiceAccountToken: false
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: radar-api-config
+data:
+  # Paramètres du protocole de veille modifiables sans reconstruire l'image
+  application.yaml: |
+    radar:
+      recent-days: 14
+      baseline-days: 60
+      g2-threshold: 10.83
+      recompute-interval: PT5M
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: radar-api
+  labels:
+    app.kubernetes.io/name: radar-api
+    app.kubernetes.io/component: backend
+spec:
+  replicas: 2
+  revisionHistoryLimit: 5
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0                             # aucune perte de capacité pendant un déploiement
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: radar-api
+      version: v1
+  template:
+    metadata:
+      labels:
+        app: radar-api                              # labels app/version utilisés par Istio (sous-ensembles, télémétrie)
+        version: v1
+        app.kubernetes.io/name: radar-api
+        app.kubernetes.io/part-of: radar
+    spec:
+      serviceAccountName: radar-api
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: radar-api
+      containers:
+        - name: radar-api
+          image: radar/radar-api:1.0.0
+          ports:
+            - name: http
+              containerPort: 8080
+            - name: management
+              containerPort: 8081
+          env:
+            # Connexion via PgBouncer (Pooler CloudNativePG), TLS exigé
+            - name: DB_URL
+              value: jdbc:postgresql://radar-db-pooler-rw:5432/radar?sslmode=require
+            - name: DB_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: radar-db-app                # secret généré par CloudNativePG
+                  key: username
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: radar-db-app
+                  key: password
+            - name: SPRING_CONFIG_ADDITIONAL_LOCATION
+              value: optional:file:/config/
+          resources:
+            requests:
+              cpu: 100m
+              memory: 384Mi
+            limits:
+              memory: 512Mi                         # pas de limite CPU : évite le bridage (throttling) de la JVM
+          startupProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: management
+            periodSeconds: 5
+            failureThreshold: 36                    # jusqu'à 3 min pour démarrer (migrations Flyway)
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: management
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: management
+            periodSeconds: 5
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: config
+              mountPath: /config
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: config
+          configMap:
+            name: radar-api-config
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: radar-api
+  labels:
+    app.kubernetes.io/name: radar-api
+spec:
+  selector:
+    app.kubernetes.io/name: radar-api               # inclut v1 et v2 : la répartition est faite par Istio
+  ports:
+    - name: http-api                                # préfixe « http- » : protocole détecté par Istio
+      port: 8080
+      targetPort: http
+    - name: http-management
+      port: 8081
+      targetPort: management
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: radar-api
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: radar-api
+  minReplicas: 2
+  maxReplicas: 6
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: radar-api
+spec:
+  minAvailable: 1                                   # protège la disponibilité lors des maintenances de nœuds
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: radar-api
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: radar-api
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: radar-api
+  endpoints:
+    - port: http-management
+      path: /actuator/prometheus
+      interval: 30s
