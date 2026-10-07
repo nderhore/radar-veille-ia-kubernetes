@@ -1,0 +1,11 @@
+# Artefacts de construction
+target/
+node_modules/
+dist/
+.angular/
+
+# Données locales et fichiers d'environnement
+*.db
+.idea/
+.vscode/
+.DS_Store
