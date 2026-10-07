@@ -1,0 +1,32 @@
+@for (t of topics(); track t.label; let i = $index) {
+  <article class="topic" [attr.data-ring]="t.ring">
+    <header>
+      <span class="num">{{ i + 1 }}</span>
+      <h3>{{ t.label }}</h3>
+      <span class="chip ring">{{ t.ringLabel }} · {{ t.ringHorizon }}</span>
+      <span class="chip nature" [attr.data-nature]="t.nature">{{ nature(t.nature) }}</span>
+      <span class="chip">{{ t.axe }} · {{ t.kiq }}</span>
+    </header>
+    <p class="question"><strong>{{ t.kiq }}</strong> : {{ t.question }}</p>
+    <dl>
+      <dt>Enjeu</dt><dd>{{ t.opportunite }}</dd>
+      <dt>Tendance</dt><dd>{{ t.tendance }} · {{ t.recent }} signaux récents / {{ t.baseline }} sur la période de référence</dd>
+      <dt>Maturité</dt><dd>TRL {{ t.trl }} · sources : {{ sources(t.sourceTypes) }} · indice de rupture {{ t.disruptionIndex | number: '1.3-3' }}</dd>
+    </dl>
+    <p class="action"><strong>Action recommandée.</strong> {{ t.action }}</p>
+    <footer>
+      <span>Revue avant le <strong>{{ t.revueAvant | date: 'dd/MM/yyyy' }}</strong></span>
+      <span class="links">
+        @for (u of t.evidenceUrls.slice(0, 3); track u; let j = $index) {
+          <a [href]="u" target="_blank" rel="noopener noreferrer">preuve {{ j + 1 }}</a>
+        }
+      </span>
+      <span class="actions">
+        <button type="button" (click)="verdict.emit({ term: t.label, verdict: 'pertinent' })">Pertinent</button>
+        <button type="button" class="ghost" (click)="verdict.emit({ term: t.label, verdict: 'bruit' })">Bruit</button>
+      </span>
+    </footer>
+  </article>
+} @empty {
+  <p class="empty">Aucun sujet : la collecte n'a pas encore couvert les deux fenêtres d'observation.</p>
+}

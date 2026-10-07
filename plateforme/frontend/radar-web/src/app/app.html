@@ -1,0 +1,58 @@
+<header>
+  <p class="kicker">Radar d'innovation · protocole de veille stratégique v{{ api.radar()?.protocolVersion }}</p>
+  <h1>Ruptures technologiques : opportunités et menaces</h1>
+  @if (api.protocol(); as p) {
+    <p class="finalite"><strong>Finalité.</strong> {{ p.finalite }} <span class="meta">Commanditaire : {{ p.commanditaire }}.</span></p>
+  }
+  @if (api.radar(); as r) {
+    <p class="meta">
+      Calculé le {{ r.computedAt | date: 'dd/MM/yyyy HH:mm' }} · {{ r.signalsInWindow }} signaux dans la fenêtre d'observation
+      @if (api.stats(); as s) {
+        · {{ s.total }} en base
+        @for (src of s.bySource | keyvalue; track src.key) { <span class="pill">{{ src.key }} {{ src.value }}</span> }
+      }
+    </p>
+    <p class="summary">
+      @for (r of ringSummary(); track r.id) {
+        <span class="count" [attr.data-ring]="r.id"><strong>{{ r.count }}</strong> {{ r.label }}</span>
+      }
+      <span class="count gaps"><strong>{{ blindSpots() }}</strong> KIQ en angle mort</span>
+    </p>
+  }
+  <button type="button" (click)="api.refresh()" [disabled]="api.loading()">Actualiser</button>
+  @if (api.error(); as e) { <p class="error" role="alert">{{ e }}</p> }
+</header>
+
+<main>
+  <section>
+    <h2>Couverture stratégique du protocole</h2>
+    <p class="hint">Chaque axe (KIT) porte des questions décisionnelles (KIQ). Une KIQ en angle mort n'a aucun signal récent : revoir le plan de sourcing.</p>
+    <app-coverage-grid [coverage]="api.radar()?.coverage ?? []" />
+  </section>
+
+  <section class="split">
+    <div class="card">
+      <h2>Radar</h2>
+      <app-radar-chart [topics]="topics()" />
+      <p class="hint">Quadrant = axe de veille · anneau = horizon de décision · numéro = rang dans la liste des opportunités.</p>
+    </div>
+    <div class="card">
+      <h2>Derniers signaux</h2>
+      <ul class="signals">
+        @for (s of api.signals(); track s.url) {
+          <li>
+            <span class="pill">{{ s.source }}</span>
+            <a [href]="s.url" target="_blank" rel="noopener noreferrer">{{ s.title }}</a>
+            <time>{{ s.publishedAt | date: 'dd/MM' }}</time>
+          </li>
+        }
+      </ul>
+    </div>
+  </section>
+
+  <section>
+    <h2>Opportunités, menaces et actions</h2>
+    <p class="hint">Triées par urgence (anneau) puis par indice de rupture. Rendre un verdict : « bruit » retire le sujet au prochain recalcul.</p>
+    <app-opportunity-list [topics]="topics()" (verdict)="api.sendFeedback($event.term, $event.verdict)" />
+  </section>
+</main>

@@ -1,0 +1,18 @@
+<svg [attr.viewBox]="'0 0 ' + size + ' ' + size" role="img" aria-label="Radar d'innovation">
+  @for (r of rings; track r.radius) {
+    <circle [attr.cx]="center" [attr.cy]="center" [attr.r]="r.radius" class="ring" />
+    <text [attr.x]="center + 4" [attr.y]="center - r.radius + 13" class="ring-label">{{ r.label }}</text>
+  }
+  <line [attr.x1]="center" y1="0" [attr.x2]="center" [attr.y2]="size" class="axis" />
+  <line x1="0" [attr.y1]="center" [attr.x2]="size" [attr.y2]="center" class="axis" />
+  @for (q of quadrants; track q.name) {
+    <text [attr.x]="q.x" [attr.y]="q.y" [attr.text-anchor]="q.anchor" [attr.fill]="q.color" class="quadrant">{{ q.name }}</text>
+  }
+  @for (b of blips(); track b.topic.label) {
+    <g>
+      <title>{{ b.n }}. {{ b.topic.label }} : indice {{ b.topic.disruptionIndex }}</title>
+      <circle [attr.cx]="b.x" [attr.cy]="b.y" r="9" [attr.fill]="b.color" />
+      <text [attr.x]="b.x" [attr.y]="b.y + 3.5" class="blip-label">{{ b.n }}</text>
+    </g>
+  }
+</svg>

@@ -1,0 +1,33 @@
+svg {
+  width: 100%;
+  max-width: 520px;
+  display: block;
+  margin: 0 auto;
+  font-family: inherit;
+}
+
+.ring {
+  fill: rgba(47, 111, 223, 0.04);
+  stroke: var(--line);
+}
+
+.axis {
+  stroke: var(--line);
+}
+
+.ring-label {
+  font-size: 10px;
+  fill: var(--muted);
+}
+
+.quadrant {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.blip-label {
+  font-size: 9px;
+  font-weight: 700;
+  fill: #fff;
+  text-anchor: middle;
+}

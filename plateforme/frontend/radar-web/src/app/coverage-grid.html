@@ -1,0 +1,37 @@
+<div class="grid">
+  @for (axis of coverage(); track axis.id) {
+    <article class="axis" [attr.data-couverture]="axis.couverture">
+      <header>
+        <span class="kit">{{ axis.id }}</span>
+        <span class="badge">couverture {{ axis.couverture }}</span>
+      </header>
+      <h3>{{ axis.intitule }}</h3>
+      <p class="enjeu">{{ axis.enjeu }}</p>
+      <p class="figures">
+        <strong>{{ axis.signals }}</strong> signaux récents · {{ axis.technologies }} technologies suivies
+      </p>
+      <p class="sources">
+        @for (t of allSources; track t) {
+          <span class="src" [class.on]="axis.sourceTypes.includes(t)">{{ label(t) }}</span>
+        }
+      </p>
+      <ul class="kiq">
+        @for (k of axis.kiq; track k.id) {
+          <li [attr.data-statut]="k.statut">
+            <span class="dot"></span>
+            <div>
+              <strong>{{ k.id }}</strong> {{ k.question }}
+              <small>{{ k.statut }} · {{ k.signals }} signaux · décision : {{ k.decision }} ({{ k.proprietaire }}, {{ k.horizon }})</small>
+            </div>
+          </li>
+        }
+      </ul>
+      <p class="rings">
+        @for (r of rings; track r.id) {
+          <span>{{ r.label }} <strong>{{ axis.sujetsParAnneau[r.id] }}</strong></span>
+        }
+      </p>
+      <p class="principal">Sujet principal : <strong>{{ axis.sujetPrincipal }}</strong></p>
+    </article>
+  }
+</div>
