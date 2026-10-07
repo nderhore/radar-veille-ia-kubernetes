@@ -1,6 +1,0 @@
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: radar
-  labels:
-    pod-security.kubernetes.io/enforce: restricted   # possible grâce au plugin CNI d'Istio (pas d'init privilégié)
