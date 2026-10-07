@@ -1,0 +1,70 @@
+spring:
+  application:
+    name: signal-collector
+  threads:
+    virtual:
+      enabled: true
+
+server:
+  port: 8081                              # le collecteur n'expose que son port d'administration
+  shutdown: graceful
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+  metrics:
+    tags:
+      application: ${spring.application.name}
+
+logging:
+  structured:
+    format:
+      console: ecs
+    ecs:
+      service:
+        name: ${spring.application.name}
+
+collector:
+  cron: "0 0 */3 * * *"                   # toutes les 3 heures
+  api-url: ${RADAR_API_URL:http://radar-api:8080}
+  lookback-days: 74                       # fenêtre récente (14 j) + fenêtre de référence (60 j)
+  run-on-startup: true
+  # Plan de sourcing : au moins une requête par KIQ du protocole (sinon la KIQ reste en « angle mort »)
+  hackernews:
+    enabled: true
+    min-engagement: 5
+    max-results: 100
+    queries:
+      - "LLM architecture"            # KIQ-1.1
+      - "small language model"        # KIQ-1.2
+      - "AI agent"                    # KIQ-2.1
+      - "coding agent"                # KIQ-2.1
+      - "MCP server"                  # KIQ-2.2
+      - "LLM inference"               # KIQ-3.1
+      - "local LLM"                   # KIQ-3.2
+      - "AI Act"                      # KIQ-4.1
+      - "prompt injection"            # KIQ-4.2
+      - "Istio ambient"               # KIQ-5.1
+      - "eBPF"                        # KIQ-5.1
+      - "OpenTelemetry"               # KIQ-5.2
+      - "Postgres Kubernetes"         # KIQ-5.3
+  arxiv:
+    enabled: true
+    min-engagement: 0
+    max-results: 200
+    queries:
+      - '(cat:cs.CL OR cat:cs.LG) AND (abs:"mixture of experts" OR abs:"state space" OR abs:"small language model" OR abs:distillation)'
+      - 'cat:cs.AI AND (abs:agent OR abs:agentic)'
+      - 'cat:cs.LG AND (abs:inference OR abs:quantization OR abs:"speculative decoding")'
+      - '(cat:cs.CR OR cat:cs.CY) AND (abs:"prompt injection" OR abs:"AI Act" OR abs:interpretability)'
+  github:
+    enabled: true
+    min-engagement: 20
+    max-results: 50
+    queries: ["ai agent", "coding agent", "mcp server", "llm inference engine", "opentelemetry", "ebpf"]
