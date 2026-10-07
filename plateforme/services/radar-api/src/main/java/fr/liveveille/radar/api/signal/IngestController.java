@@ -24,8 +24,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * API interne d'ingestion. Elle n'est pas exposée par la passerelle : seule l'identité
- * de service du collecteur y est autorisée (AuthorizationPolicy Istio, mTLS).
+ * API interne d'ingestion. Elle n'est pas exposée par le point d'entrée (nginx ne relaie que /api) :
+ * seul le collecteur, placé sur le même réseau Docker que l'API, peut l'atteindre.
  */
 @RestController
 @RequestMapping("/internal/signals")

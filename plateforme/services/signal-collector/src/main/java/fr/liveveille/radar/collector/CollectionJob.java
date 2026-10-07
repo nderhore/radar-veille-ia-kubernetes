@@ -47,7 +47,7 @@ public class CollectionJob {
         this.props = props;
         this.meters = meters;
         this.clock = Clock.systemUTC();
-        // Appel interne au maillage : délais de sécurité côté client, mais les retries sont portés par Istio (VirtualService)
+        // Appel interne : délais de sécurité côté client, sans nouvelle tentative (une collecte manquée est rattrapée au cycle suivant)
         this.api = HttpClients.build(builder, props.apiUrl());
         sources.forEach(s -> meters.gauge("radar.collector.last.success", List.of(Tag.of("source", s.name())),
                 lastSuccess.computeIfAbsent(s.name(), k -> new AtomicLong(0)), AtomicLong::doubleValue));

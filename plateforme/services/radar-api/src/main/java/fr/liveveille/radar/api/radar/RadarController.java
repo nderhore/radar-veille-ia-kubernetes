@@ -16,7 +16,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import fr.liveveille.radar.api.signal.SignalRepository;
 
-/** API publique consommée par le front Angular (exposée via la passerelle Istio). */
+/** API publique consommée par le front Angular (relayée par le nginx de radar-web). */
 @RestController
 @RequestMapping("/api")
 public class RadarController {

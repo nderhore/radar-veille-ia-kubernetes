@@ -5,8 +5,8 @@ import { forkJoin } from 'rxjs';
 import { Protocol, RadarSnapshot, SignalSummary, Stats } from './radar.models';
 
 /**
- * Accès à l'API. Les URL sont relatives (/api/...) : en Kubernetes, la passerelle Istio
- * route /api vers radar-api ; en local, nginx ou le serveur de développement font le relais.
+ * Accès à l'API. Les URL sont relatives (/api/...) : nginx (ou le serveur de développement)
+ * relaie /api vers radar-api.
  */
 @Injectable({ providedIn: 'root' })
 export class RadarApiService {
