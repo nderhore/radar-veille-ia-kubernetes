@@ -1,53 +1,44 @@
 # Étude de cas : Industrialiser le radar d'innovation
 
-**Kubernetes · Backend Java · Front Angular · Istio · PostgreSQL haute disponibilité · Prometheus / Grafana · Vector**
+**Docker Compose · Backend Java · Front Angular · PostgreSQL · Prometheus / Grafana · Vector**
 
 *Démonstration distincte du live « Définition du protocole de veille stratégique » : le radar Python de la démo 1 devient un service en production, et chaque choix d'architecture fait l'objet d'une décision argumentée.*
 
 ---
 
-## Version « cours » : ce qu'il faut pour le live
+## Contenu
 
 | Fichier | Public | Contenu |
 |---|---|---|
-| `01_etude-de-cas.md` | Apprenants | **Version courte, angle technique et pannes** : Altéa Services et ses défis, exigences, architecture, 6 décisions clés, 5 pannes et les bonnes réactions. Variante : `01c_…` (angle détection des ruptures) |
-| `03_slides-etude-de-cas.pptx` | Projection | Diaporama de 24 diapositives, notes de présentation incluses |
-| `demo/` | Démonstration | **Docker Compose uniquement** : application, alertes, journaux, tableau de bord. Voir `demo/README.md` |
+| `01_etude-de-cas.md` | Apprenants | **Angle technique et pannes** : Altéa Services et ses défis, exigences, architecture, 6 décisions clés, 5 pannes et les bonnes réactions. Variante : `01c_…` (angle détection des ruptures) |
+| `03_slides-etude-de-cas.pptx` | Projection | Diaporama, notes de présentation incluses |
+| `demo/` | Démonstration | Le service complet sous **Docker Compose** : application, alertes, journaux, tableau de bord, sauvegarde. Voir `demo/README.md` |
+| `plateforme/` | Code source | Services Java, front Angular, runbooks. Voir `plateforme/README.md` |
+
+`demo/` ne fonctionne pas seul : Docker Compose construit les images à partir des sources de `plateforme/services` et `plateforme/frontend`.
 
 ```bash
 cd demo
 make up-complet    # application + observabilité : radar http://localhost:8088, Grafana http://localhost:3000
 ```
 
-`demo/` ne fonctionne pas seul : Docker Compose construit les images à partir des sources de `plateforme/services` et `plateforme/frontend`.
+## Les six décisions
 
-## Annexe : la plateforme complète
+| N° | Question | Décision retenue | Où la voir |
+|---|---|---|---|
+| D1 | Un ou plusieurs services ? | 2 services Java (API, collecteur) + front Angular | `make panne-collecteur` |
+| D2 | Kubernetes ou Docker Compose ? | Docker Compose sur un serveur européen ; redémarrage automatique ; images versionnées | `demo/docker-compose.yml` |
+| D3 | Comment sécuriser les échanges ? | Point d'entrée unique en HTTPS ; réseaux Docker séparés | `networks` dans `demo/docker-compose.yml` |
+| D4 | Comment protéger les données ? | PostgreSQL sur volume persistant, sauvegarde chaque nuit, restauration testée | `make sauvegarde`, `make restauration` |
+| D5 | Comment savoir que tout va bien ? | Prometheus, Alertmanager, Grafana ; Vector vers Loki, masquage RGPD | Grafana, http://localhost:3000 |
+| D6 | Qui reçoit quelle alerte ? | Astreinte, exploitation, équipe veille | `demo/observabilite/alertmanager.yml` |
 
-`plateforme/` contient la version déployable sur Kubernetes : manifestes Istio, cluster PostgreSQL CloudNativePG à 3 instances, alertes SLO, Vector en DaemonSet, Argo CD, CI. Elle n'est **pas nécessaire au live**. Pendant la séance, on en ouvre quelques fichiers pour illustrer les décisions que Docker Compose ne permet pas de montrer :
+## Les cinq pannes
 
-| Décision | Fichier à ouvrir |
-|---|---|
-| D3 · Maillage Istio (mTLS, autorisations, egress) | `plateforme/deploy/app/mesh/security.yaml`, `egress.yaml` |
-| D4 · D5 · Cluster PostgreSQL | `plateforme/deploy/app/postgres/cluster.yaml` |
-| D6 · Alertes SLO multi-fenêtres | `plateforme/deploy/app/monitoring/prometheus-rules.yaml` |
-| D10 · Canari | `plateforme/deploy/app/components/canary/kustomization.yaml` |
-
-Son installation complète (`plateforme/`, `make kind-up`) demande 8 Go de RAM et au moins 25 Go de disque libre : voir `plateforme/README.md`.
-
-## Les décisions instruites
-
-| N° | Thème | Décision retenue |
+| Panne | Commande | Alerte et destinataire |
 |---|---|---|
-| D1 | Découpage applicatif | 2 services Java + front Angular |
-| D2 | Hébergement | Kubernetes managé, hébergeur UE, 3 zones |
-| D3 | Maillage de services | Istio sidecar + CNI, base hors maillage |
-| D4 | PostgreSQL | CloudNativePG : 3 instances, bascule automatique, PITR |
-| D5 | Connexions et durabilité | PgBouncer en mode transaction ; réplication synchrone |
-| D6 | Métriques et alertes | Prometheus, Alertmanager, Grafana ; SLO et alertes multi-fenêtres |
-| D7 | Journaux | Vector vers Loki, masquage RGPD |
-| D8 | Traces | Tempo, échantillonnage 10 % |
-| D9 | Déploiement | GitOps avec Argo CD |
-| D10 | Livraison progressive | Canari Istio |
-| D11 | Front | Angular 22 |
-| D12 | Secrets | External Secrets Operator + coffre |
-| D13 | Sécurité | Défense en profondeur (6 mesures) |
+| Le collecteur s'arrête | `make panne-collecteur` | `RadarCollectorDown` : exploitation |
+| L'API tombe | `make panne-api` | `RadarApiDown` : astreinte |
+| Une nouvelle version est défectueuse | `RADAR_VERSION=1.0.0 docker compose up -d --no-build radar-api` (retour arrière) | `RadarApiErrorRate` : astreinte |
+| La base de données s'arrête | `make panne-base` puis `make charge` | `RadarApiErrorRate` : astreinte |
+| Un sujet dépasse le seuil de rupture | *(automatique)* | `RadarDisruptionDetected` : équipe veille |
