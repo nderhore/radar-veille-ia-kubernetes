@@ -1,11 +1,10 @@
-# Intégration continue : tests, images, analyse de vulnérabilités, signature, mise à jour GitOps.
-# Le pipeline ne déploie jamais directement dans le cluster (décision D9) : il modifie le dépôt,
-# Argo CD réconcilie. L'historique Git devient le journal des déploiements.
+# Intégration continue : tests, validation de la configuration Docker Compose, images, analyse de
+# vulnérabilités et signature.
+#
+# Tests et validations à chaque push et pull request. La construction des images se déclenche à la
+# main (Actions, puis Run workflow) : elle publie sur ghcr.io.
 name: ci
 
-# Tests et validations à chaque push et pull request. La construction des images et la mise à jour
-# GitOps se déclenchent à la main (Actions, puis Run workflow) : elles publient sur ghcr.io et
-# commitent dans le dépôt.
 on:
   pull_request:
   push:
@@ -13,16 +12,12 @@ on:
   workflow_dispatch: {}
 
 permissions:
-  contents: write          # mise à jour du tag d'image dans l'overlay prod
+  contents: read
   packages: write          # publication sur ghcr.io
   id-token: write          # signature sans clé (cosign + OIDC)
 
 env:
   REGISTRY: ghcr.io/${{ github.repository_owner }}
-
-defaults:
-  run:
-    working-directory: plateforme
 
 jobs:
   test:
@@ -38,25 +33,30 @@ jobs:
       - run: npm ci && npx ng build
         working-directory: plateforme/frontend/radar-web
 
-  validate-manifests:
+  validate:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: demo
     steps:
       - uses: actions/checkout@v4
-      - name: Kustomize + kubeconform (schémas Kubernetes et CRD)
+      - name: Configuration Docker Compose
+        run: docker compose --profile observabilite config -q
+      - name: Règles et configuration Prometheus (promtool)
         run: |
-          curl -sL https://github.com/yannh/kubeconform/releases/download/v0.8.0/kubeconform-linux-amd64.tar.gz | tar xz
-          for o in dev dev-canary prod; do
-            kubectl kustomize deploy/app/overlays/$o | ./kubeconform -strict -summary \
-              -schema-location default \
-              -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json'
-          done
-      - name: Règles Prometheus (promtool)
+          docker run --rm --entrypoint promtool -v "$PWD/observabilite:/cfg:ro" prom/prometheus:v3.15.0 \
+            check rules /cfg/regles-alertes.yml
+      - name: Routage des alertes (amtool)
         run: |
-          yq '{"groups": .spec.groups}' deploy/app/monitoring/prometheus-rules.yaml > rules.yaml
-          docker run --rm --entrypoint promtool -v "$PWD/rules.yaml:/rules.yaml:ro" prom/prometheus:v3.15.0 check rules /rules.yaml
+          docker run --rm --entrypoint amtool -v "$PWD/observabilite:/cfg:ro" prom/alertmanager:v0.34.1 \
+            check-config /cfg/alertmanager.yml
+      - name: Configuration Vector
+        run: |
+          docker run --rm -v "$PWD/observabilite:/cfg:ro" timberio/vector:0.59.0-alpine \
+            validate --no-environment /cfg/vector.yaml
 
   images:
-    needs: [test, validate-manifests]
+    needs: [test, validate]
     if: github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     strategy:
@@ -87,19 +87,5 @@ jobs:
           exit-code: "1"
           ignore-unfixed: true
       - uses: sigstore/cosign-installer@v3
-      - name: Signature de l'image (vérifiable à l'admission par une politique Kyverno)
+      - name: Signature de l'image
         run: cosign sign --yes ${{ env.REGISTRY }}/${{ matrix.component.name }}@${{ steps.build.outputs.digest }}
-
-  gitops-bump:
-    needs: images
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Mise à jour des tags d'image de l'overlay prod (Argo CD se charge du déploiement)
-        working-directory: plateforme/deploy/app/overlays/prod
-        run: |
-          for c in radar-api signal-collector radar-web; do
-            kustomize edit set image radar/$c=${REGISTRY}/$c:${GITHUB_SHA}
-          done
-          git config user.name "radar-ci"; git config user.email "radar-ci@users.noreply.github.com"
-          git commit -am "deploy: radar ${GITHUB_SHA::7}" && git push
