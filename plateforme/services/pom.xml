@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Agrégateur : `mvn verify` construit et teste les deux services en une commande. -->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <groupId>fr.liveveille.radar</groupId>
+    <artifactId>radar-services</artifactId>
+    <version>1.0.0</version>
+    <packaging>pom</packaging>
+    <name>Radar d'innovation : services Java</name>
+
+    <modules>
+        <module>radar-api</module>
+        <module>signal-collector</module>
+    </modules>
+</project>

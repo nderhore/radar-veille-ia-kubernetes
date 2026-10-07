@@ -1,0 +1,175 @@
+spring:
+  application:
+    name: radar-api
+  threads:
+    virtual:
+      enabled: true                       # Java 21 : threads virtuels pour les requêtes HTTP
+  datasource:
+    # En Kubernetes : PgBouncer (Pooler CloudNativePG) devant le primaire ; identifiants issus du secret radar-db-app
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/radar}
+    username: ${DB_USERNAME:radar}
+    password: ${DB_PASSWORD:radar}
+    hikari:
+      maximum-pool-size: 10
+      connection-timeout: 5000
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: none                      # le schéma appartient à Flyway, jamais à Hibernate
+  flyway:
+    enabled: true
+  mvc:
+    problemdetails:
+      enabled: true                       # erreurs au format RFC 9457 (application/problem+json)
+
+server:
+  port: 8080
+  shutdown: graceful                      # termine les requêtes en cours lors d'un arrêt de pod
+
+management:
+  server:
+    port: 8081                            # port d'administration distinct : métriques et sondes, jamais exposé
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true                     # /actuator/health/liveness et /readiness
+      show-details: never
+  metrics:
+    tags:
+      application: ${spring.application.name}
+
+logging:
+  structured:
+    format:
+      console: ecs                        # logs JSON (Elastic Common Schema), parsés par Vector
+    ecs:
+      service:
+        name: ${spring.application.name}
+
+radar:
+  recent-days: 14
+  baseline-days: 60
+  g2-threshold: 10.83                     # p < 0,001 (comparaisons multiples)
+  recompute-interval: PT5M
+  weights: {momentum: 0.35, diffusion: 0.25, impact: 0.20, novelty: 0.20}
+  credibility: {academic: 0.8, code: 0.6, community: 0.6, press: 0.8, regulatory: 1.0}
+  # ==========================================================================================
+  # PROTOCOLE DE VEILLE STRATÉGIQUE (version exécutable, cf. live « Définition du protocole »)
+  # Chaque technologie suivie répond à une question décisionnelle (KIQ) d'un axe (KIT).
+  # ==========================================================================================
+  protocole:
+    version: "2.0.0"
+    commanditaire: "Comité de direction d'Altéa Services"
+    finalite: >-
+      Détecter au plus tôt les technologies d'IA et de plateforme susceptibles de créer une opportunité
+      d'offre, de réduire nos coûts ou de menacer nos activités, et éclairer les décisions d'investissement,
+      d'expérimentation et de montée en compétences.
+
+    # Consigne associée à chaque anneau : ce qu'il faut faire, et sous quel délai revoir le sujet
+    anneaux:
+      agir:       {libelle: "Agir",       horizon: "0–6 mois",   verbe: "Décider",      revue-jours: 14,
+                   consigne: "instruire au prochain comité radar une décision d'investissement ou d'industrialisation, avec chiffrage du gain attendu."}
+      preparer:   {libelle: "Préparer",   horizon: "6–18 mois",  verbe: "Expérimenter", revue-jours: 30,
+                   consigne: "lancer une preuve de concept limitée (4 à 6 semaines) sur un cas d'usage interne, avec un critère de succès mesurable."}
+      explorer:   {libelle: "Explorer",   horizon: "18–36 mois", verbe: "Approfondir",  revue-jours: 90,
+                   consigne: "rédiger une fiche d'analyse, identifier 2 ou 3 acteurs ou laboratoires de référence et renforcer la collecte."}
+      surveiller: {libelle: "Surveiller", horizon: "> 36 mois",  verbe: "Surveiller",   revue-jours: 180,
+                   consigne: "maintenir le sujet en liste de surveillance et le réévaluer en revue trimestrielle."}
+
+    axes:
+      - id: KIT-1
+        quadrant: "Modèles & Techniques"
+        intitule: "Modèles de fondation et architectures"
+        enjeu: "Qualité et coût des modèles intégrés à nos offres ; dépendance aux fournisseurs de modèles"
+        kiq:
+          - {id: KIQ-1.1, question: "Quelle architecture de modèle remplacera le Transformer dense sur nos cas d'usage ?",
+             decision: "Choix du socle de modèles des offres 2027", proprietaire: "Direction technique", horizon: "12 mois"}
+          - {id: KIQ-1.2, question: "Quand un petit modèle exécutable sur nos serveurs atteindra-t-il la qualité de nos modèles actuels ?",
+             decision: "Internalisation de l'inférence (fin de la dépendance aux API)", proprietaire: "Direction technique", horizon: "18 mois"}
+      - id: KIT-2
+        quadrant: "Agents & Applications"
+        intitule: "Agents autonomes et automatisation des processus"
+        enjeu: "Nouvelles offres d'automatisation de bout en bout ; menace sur nos prestations à faible valeur ajoutée"
+        kiq:
+          - {id: KIQ-2.1, question: "Quels processus métier de nos clients deviennent automatisables de bout en bout par des agents ?",
+             decision: "Lancement d'une offre « agents métier »", proprietaire: "Direction de l'offre", horizon: "6 mois"}
+          - {id: KIQ-2.2, question: "Quels standards d'interopérabilité entre agents s'imposent ?",
+             decision: "Standard d'intégration retenu pour nos produits", proprietaire: "Architecte en chef", horizon: "12 mois"}
+      - id: KIT-3
+        quadrant: "Infrastructure & Outillage"
+        intitule: "Inférence, coûts et souveraineté"
+        enjeu: "Coût d'inférence et hébergement souverain : marge des offres IA et exigences des clients santé et public"
+        kiq:
+          - {id: KIQ-3.1, question: "Quelle trajectoire du coût d'inférence à 18 mois ?",
+             decision: "Grille tarifaire des offres IA", proprietaire: "Directions financière et technique", horizon: "18 mois"}
+          - {id: KIQ-3.2, question: "Quelles technologies permettent une IA souveraine ou embarquée ?",
+             decision: "Offre IA hébergée en France", proprietaire: "Direction de l'offre", horizon: "12 mois"}
+      - id: KIT-4
+        quadrant: "Confiance & Régulation"
+        intitule: "Conformité, sécurité et confiance"
+        enjeu: "Conformité et sécurité des produits IA : condition d'accès aux marchés santé et public"
+        kiq:
+          - {id: KIQ-4.1, question: "Quelles obligations de l'AI Act s'appliquent à nos produits, et à quelle échéance ?",
+             decision: "Plan de mise en conformité", proprietaire: "DPO et direction juridique", horizon: "6 mois"}
+          - {id: KIQ-4.2, question: "Quelles nouvelles classes d'attaques menacent nos systèmes à base de LLM ?",
+             decision: "Priorités du plan de sécurité", proprietaire: "RSSI", horizon: "6 mois"}
+      - id: KIT-5
+        quadrant: "Infrastructure & Outillage"
+        intitule: "Plateforme et exploitation"
+        enjeu: "Fiabilité et coût d'exploitation de notre plateforme : signaux de révision du registre des décisions"
+        kiq:
+          - {id: KIQ-5.1, question: "Le mode ambient d'Istio couvre-t-il nos besoins L7 avec une maturité suffisante ?",
+             decision: "Révision de la décision D3 (maillage)", proprietaire: "Équipe plateforme", horizon: "12 mois"}
+          - {id: KIQ-5.2, question: "OpenTelemetry est-il devenu le standard de collecte de nos journaux, métriques et traces ?",
+             decision: "Révision de la décision D7 (journaux)", proprietaire: "Équipe plateforme", horizon: "12 mois"}
+          - {id: KIQ-5.3, question: "Quelles technologies réduiraient le coût d'exploitation de nos bases de données ?",
+             decision: "Révision de la décision D4 (PostgreSQL)", proprietaire: "Équipe plateforme", horizon: "18 mois"}
+
+    # nature : opportunite | menace | mixte
+    technologies:
+      - {label: "Mixture of Experts", axe: KIT-1, kiq: KIQ-1.1, nature: opportunite, synonyms: ["mixture of experts", "mixture-of-experts", "moe"],
+         opportunite: "Modèles plus capables à coût d'inférence contenu (activation partielle des paramètres)"}
+      - {label: "State Space Models", axe: KIT-1, kiq: KIQ-1.1, nature: opportunite, synonyms: ["state space model", "mamba", "ssm"],
+         opportunite: "Traitement de longs documents à coût linéaire (contrats, dossiers patients)"}
+      - {label: "Diffusion LLM", axe: KIT-1, kiq: KIQ-1.1, nature: opportunite, synonyms: ["diffusion language model", "diffusion llm"],
+         opportunite: "Génération parallèle plus rapide pour les usages interactifs"}
+      - {label: "World Models", axe: KIT-1, kiq: KIQ-1.1, nature: opportunite, synonyms: ["world model", "world models"],
+         opportunite: "Simulation et planification pour nos clients industriels"}
+      - {label: "Small Language Models", axe: KIT-1, kiq: KIQ-1.2, nature: opportunite, synonyms: ["small language model", "slm", "distillation"],
+         opportunite: "Inférence internalisée sur nos serveurs : coût maîtrisé, données clients non transmises"}
+      - {label: "Computer use", axe: KIT-2, kiq: KIQ-2.1, nature: mixte, synonyms: ["computer use", "computer-use", "browser agent"],
+         opportunite: "Automatiser des processus sur des logiciels sans API ; menace sur nos prestations de saisie et de recette manuelle"}
+      - {label: "Agents de code", axe: KIT-2, kiq: KIQ-2.1, nature: mixte, synonyms: ["coding agent", "coding agents", "code agent"],
+         opportunite: "Gains de productivité de nos équipes de développement ; pression sur nos prix de régie"}
+      - {label: "Model Context Protocol", axe: KIT-2, kiq: KIQ-2.2, nature: opportunite, synonyms: ["model context protocol", "mcp server", "mcp"],
+         opportunite: "Connecter nos produits à tous les assistants du marché avec un seul connecteur"}
+      - {label: "Agent-to-Agent (A2A)", axe: KIT-2, kiq: KIQ-2.2, nature: opportunite, synonyms: ["agent-to-agent", "a2a"],
+         opportunite: "Orchestrer des agents de fournisseurs différents dans les processus de nos clients"}
+      - {label: "Speculative decoding", axe: KIT-3, kiq: KIQ-3.1, nature: opportunite, synonyms: ["speculative decoding"],
+         opportunite: "Réduire la latence et le coût par requête sans changer de modèle"}
+      - {label: "Quantization 1-4 bits", axe: KIT-3, kiq: KIQ-3.1, nature: opportunite, synonyms: ["quantization", "4-bit", "1-bit", "fp4", "int4"],
+         opportunite: "Réduire l'empreinte mémoire des modèles : serveurs moins coûteux"}
+      - {label: "RAG", axe: KIT-3, kiq: KIQ-3.1, nature: opportunite, synonyms: ["retrieval-augmented generation", "rag", "graphrag"],
+         opportunite: "Exploiter les bases documentaires des clients sans réentraîner de modèle"}
+      - {label: "On-device AI", axe: KIT-3, kiq: KIQ-3.2, nature: opportunite, synonyms: ["on-device", "edge ai", "local llm"],
+         opportunite: "IA embarquée chez les clients industriels, sans connexion ni transfert de données"}
+      - {label: "Prompt injection", axe: KIT-4, kiq: KIQ-4.2, nature: menace, synonyms: ["prompt injection", "jailbreak"],
+         opportunite: "Menace directe sur nos assistants connectés aux données des clients"}
+      - {label: "Interpretability", axe: KIT-4, kiq: KIQ-4.1, nature: opportunite, synonyms: ["interpretability", "sparse autoencoder"],
+         opportunite: "Expliquer les décisions des modèles : exigence de transparence des clients publics"}
+      - {label: "AI Act", axe: KIT-4, kiq: KIQ-4.1, nature: mixte, synonyms: ["ai act", "eu ai act"],
+         opportunite: "Obligations nouvelles ; avantage concurrentiel si la conformité est démontrée tôt"}
+      - {label: "Istio ambient", axe: KIT-5, kiq: KIQ-5.1, nature: opportunite, synonyms: ["ambient mesh", "istio ambient", "ztunnel"],
+         opportunite: "Réduire l'empreinte mémoire du maillage (fin du proxy par pod)"}
+      - {label: "eBPF", axe: KIT-5, kiq: KIQ-5.1, nature: opportunite, synonyms: ["ebpf", "cilium"],
+         opportunite: "Observabilité et sécurité réseau sans modifier les applications"}
+      - {label: "Kubernetes Gateway API", axe: KIT-5, kiq: KIQ-5.1, nature: opportunite, synonyms: ["gateway api", "httproute"],
+         opportunite: "Standardiser l'exposition des services, indépendamment du maillage"}
+      - {label: "OpenTelemetry", axe: KIT-5, kiq: KIQ-5.2, nature: opportunite, synonyms: ["opentelemetry", "otel"],
+         opportunite: "Unifier journaux, métriques et traces avec un standard ouvert"}
+      - {label: "Opérateurs PostgreSQL", axe: KIT-5, kiq: KIQ-5.3, nature: opportunite, synonyms: ["cloudnativepg", "postgres operator", "cnpg"],
+         opportunite: "Industrialiser l'exploitation des bases (sauvegardes, bascule) à moindre coût"}

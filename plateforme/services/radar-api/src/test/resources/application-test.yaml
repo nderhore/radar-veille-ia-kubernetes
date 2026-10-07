@@ -1,0 +1,14 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:radar;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH
+    username: sa
+    password: ""
+
+management:
+  server:
+    port: 0
+
+logging:
+  structured:
+    format:
+      console: ""                         # logs lisibles pendant les tests
