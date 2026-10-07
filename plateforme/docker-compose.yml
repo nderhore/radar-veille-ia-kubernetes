@@ -1,0 +1,54 @@
+# Exécution locale sans Kubernetes : utile pour développer ou pour une démonstration de secours.
+#   docker compose up --build        puis http://localhost:8088
+# Pas de maillage ici : l'API interne /internal n'est pas protégée (elle l'est par Istio en Kubernetes).
+name: radar
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: radar
+      POSTGRES_USER: radar
+      POSTGRES_PASSWORD: radar
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U radar -d radar"]
+      interval: 5s
+      retries: 10
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  radar-api:
+    build: services/radar-api
+    image: radar/radar-api:1.0.0
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/radar
+      DB_USERNAME: radar
+      DB_PASSWORD: radar
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8080:8080"     # API
+      - "8081:8081"     # métriques et sondes (/actuator/prometheus)
+
+  signal-collector:
+    build: services/signal-collector
+    image: radar/signal-collector:1.0.0
+    environment:
+      RADAR_API_URL: http://radar-api:8080
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+    depends_on:
+      - radar-api
+    ports:
+      - "8082:8081"
+
+  radar-web:
+    build: frontend/radar-web
+    image: radar/radar-web:1.0.0
+    depends_on:
+      - radar-api
+    ports:
+      - "8088:8080"
+
+volumes:
+  pgdata: {}
